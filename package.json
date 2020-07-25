@@ -1,0 +1,11 @@
+{
+  "name": "taskr-servor",
+  "version": "1.0.0",
+  "description": "servor",
+  "files": ["index.js","utils.js","types.json","port.js"],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ivanheral <ivanhernandezal@gmail.com>",
+  "license": "MIT"
+}
