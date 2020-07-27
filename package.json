@@ -1,11 +1,19 @@
 {
   "name": "taskr-servor",
-  "version": "1.0.0",
-  "description": "servor",
-  "files": ["index.js","utils.js","types.json","port.js"],
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "version": "1.0.1",  
+  "description": "Servor for taskr",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ivanheral/taskr-servor.git"
   },
+  "bugs": {
+    "url": "https://github.com/ivanheral/taskr-servor/issues"
+  },
+  "keywords": [
+    "taskr",
+    "servor"
+  ],
   "author": "ivanheral <ivanhernandezal@gmail.com>",
+  "files": ["index.js","utils.js","types.json","port.js"],
   "license": "MIT"
 }
