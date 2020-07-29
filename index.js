@@ -4,9 +4,33 @@ const fs = require('fs');
 const url = require('url');
 const path = require('path');
 const http = require('http');
+const clor = require('clor');
 const utils = require('./utils');
+const tinydate = require('tinydate');
 const cwd = process.cwd();
 const isPortAvailable = require('./port.js');
+
+function stamp() {
+  let i = 0;
+  const args = new Array(arguments.length);
+  for (; i < args.length; ++i) {
+    args[i] = arguments[i];
+  }
+
+  let stamp = tinydate('[{HH}:{mm}:{ss}]');
+  let Dates = new Date();
+
+  process.stdout.write(clor['magenta'](stamp(Dates)) + ' ');
+  console[this.method].apply(console, (this.custom ? [this.custom].concat(args) : args));
+}
+
+function log() {
+  stamp.apply({
+    method: 'log',
+    color: 'magenta'
+  }, arguments);
+  return this;
+}
 
 const mime = Object.entries(require('./types.json')).reduce(
   (all, [type, exts]) =>
@@ -20,6 +44,7 @@ const mime = Object.entries(require('./types.json')).reduce(
 const sendError = (res, _, status) => {
   res.writeHead(status);
   res.end();
+  log(`Error ${clor.red.bold(_)}`);
 };
 
 const sendFile = (res, _, status, file, ext) => {
@@ -29,6 +54,7 @@ const sendFile = (res, _, status, file, ext) => {
   });
   res.write(file, 'binary');
   res.end();
+  log(`Reloading ${clor.green.bold(_)}`);
 };
 
 const sendMessage = (res, channel, data) => {
@@ -77,6 +103,7 @@ const start = options => {
       })
       .listen(port, () => {
         utils.open_browser(port);
+        log(`Open ${clor.blue.bold("http://localhost:"+port)}`);
       })
 
     http

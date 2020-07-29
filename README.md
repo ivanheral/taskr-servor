@@ -6,7 +6,7 @@
 ## Install
 
 ```
-$ npm install --save-dev taskr-servor
+$ npm install --save-dev taskr taskr-servor
 ```
 
 ## Usage
