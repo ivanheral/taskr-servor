@@ -1,17 +1,20 @@
 const net = require('net');
 
 module.exports = port => {
-    return new Promise(resolve => {
-        if (isNaN(port) || port != parseInt(port) || port < 0 || port > 65535) {
-            resolve(false);
-        }
-        port = parseInt(port);
-        const tester = net
-            .createServer()
-            .once('error', _err => {
-                resolve(false);
-            })
-            .once('listening', () => tester.once('close', () => resolve(true)).close())
-            .listen(port);
-    });
+    port = parseInt(port);
+    if (!isNaN(port) && (port < 1 || port > 65535)) {
+        return `The port ${port} is out of range [1 - 65535]`;
+    } else {
+        return new Promise(resolve => {
+
+            const tester = net
+                .createServer()
+                .once('error', _err => {
+                    resolve('The port you have specified is already in use!');
+                })
+                .once('listening', () => tester.once('close', () => resolve("")).close())
+                .listen(port);
+
+        });
+    }
 };

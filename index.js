@@ -83,7 +83,7 @@ const start = options => {
   `;
   (async function () {
     var status = await isPortAvailable(port);
-
+    if (status == "") {
     http
       .createServer((req, res) => {
         const pathname = url.parse(req.url).pathname;
@@ -123,6 +123,9 @@ const start = options => {
         )
       })
       .listen(parseInt(reloadPort, 10))
+    } else {
+      log(`Error ${clor.red.bold(status)}`);
+    }
   })()
 }
 
