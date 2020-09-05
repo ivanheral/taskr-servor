@@ -1,60 +1,37 @@
-#!/usr/bin/env node
-
 const fs = require('fs');
 const url = require('url');
 const path = require('path');
 const http = require('http');
+const http2 = require('http2');
+const https = require('https');
 const clor = require('clor');
-const utils = require('./utils');
-const tinydate = require('tinydate');
-const cwd = process.cwd();
-const isPortAvailable = require('./port.js');
+const zlib = require('zlib');
+const {
+  log,
+  mimes,
+  open_browser,
+  use_port,
+  fileWatch
+} = require('./utils');
 
-function stamp() {
-  let i = 0;
-  const args = new Array(arguments.length);
-  for (; i < args.length; ++i) {
-    args[i] = arguments[i];
-  }
-
-  let stamp = tinydate('[{HH}:{mm}:{ss}]');
-  let Dates = new Date();
-
-  process.stdout.write(clor['magenta'](stamp(Dates)) + ' ');
-  console[this.method].apply(console, (this.custom ? [this.custom].concat(args) : args));
-}
-
-function log() {
-  stamp.apply({
-    method: 'log',
-    color: 'magenta'
-  }, arguments);
-  return this;
-}
-
-const mime = Object.entries(require('./types.json')).reduce(
-  (all, [type, exts]) =>
-  Object.assign(
-    all,
-    ...exts.map(ext => ({
-      [ext]: type
-    }))), {}
-)
-
-const sendError = (res, _, status) => {
+const sendError = (res, status) => {
   res.writeHead(status);
+  res.write(`${status}`);
   res.end();
-  log(`Error ${clor.red.bold(_)}`);
+  log(`${clor.red.bold(status)}`);
 };
 
-const sendFile = (res, _, status, file, ext) => {
+const sendFile = (res, status, file, ext, encoding = 'binary') => {
+  if (['js', 'css', 'html', 'json', 'xml', 'svg'].includes(ext)) {
+    res.setHeader('content-encoding', 'gzip');
+    file = zlib.gzipSync(utf8(file));
+    encoding = 'utf8';
+  }
   res.writeHead(status, {
-    'Content-Type': mime[ext] || 'application/octet-stream',
-    'Access-Control-Allow-Origin': '*',
+    'content-type': mimes(ext)
   });
-  res.write(file, 'binary');
+  res.write(file, encoding);
   res.end();
-  log(`Reloading ${clor.green.bold(_)}`);
 };
 
 const sendMessage = (res, channel, data) => {
@@ -62,67 +39,99 @@ const sendMessage = (res, channel, data) => {
   res.write('\n\n');
 };
 
-const isRouteRequest = uri =>
-  uri
-  .split('/')
-  .pop()
-  .indexOf('.') === -1 ?
-  true :
-  false
+const utf8 = (file) => Buffer.from(file, 'binary').toString('utf8');
+const isRouteRequest = (pathname) => !~pathname.split('/').pop().indexOf('.');
+const baseDoc = (pathname = '', base = path.join('/', pathname, '/')) =>
+  `<!doctype html><meta charset="utf-8"/><base href="${base}"/>`;
 
 const start = options => {
   const root = options.root || ".";
-  const fallback = options.fallback || "index.html";
+  const module = options.module || false;
+  const fallback = options.fallback || module ? 'index.js' : 'index.html';
   const port = parseInt(options.port) || 8080;
-  const reloadPort = options.reloadPort || 5000;
-  const reloadScript = `
-  <script>
-    const source = new EventSource('http://localhost:${reloadPort}');
-    source.onmessage = function(e){ location.reload(true)};
-  </script>
-  `;
-  (async function () {
-    var status = await isPortAvailable(port);
-    if (status == "") {
-    http
-      .createServer((req, res) => {
-        const pathname = url.parse(req.url).pathname;
-        const isRoute = isRouteRequest(pathname)
-        const status = isRoute && pathname !== '/' ? 301 : 200
-        const resource = isRoute ? `/${fallback}` : decodeURI(pathname)
-        const uri = path.join(cwd, root, resource)
-        const ext = uri.replace(/^.*[\.\/\\]/, '').toLowerCase()
-        fs.stat(uri, (err, _stat) => {
-          if (err) return sendError(res, resource, 404)
-          fs.readFile(uri, 'binary', (err, file) => {
-            if (err) return sendError(res, resource, 500)
-            if (isRoute) file += reloadScript
-            sendFile(res, resource, status, file, ext)
-          })
-        })
-      })
-      .listen(port, () => {
-        utils.open_browser(port);
-        log(`Open ${clor.blue.bold("http://localhost:"+port)}`);
-      })
+  const inject = options.inject || '';
+  const static = options.static || false;
+  const reload = options.reload || true;
+  const credentials = options.credentials || false;
+  const reloadClients = [];
+  const protocol = credentials ? 'https' : 'http';
+  const server = credentials ?
+    reload ?
+    (cb) => https.createServer(credentials, cb) :
+    (cb) => http2.createSecureServer(credentials, cb) :
+    (cb) => http.createServer(cb);
 
-    http
-      .createServer((_request, res) => {
-        res.writeHead(200, {
-          Connection: 'keep-alive',
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Access-Control-Allow-Origin': '*',
-        })
-        sendMessage(res, 'connected', 'awaiting change')
-        setInterval(sendMessage, 60000, res, 'ping', 'still waiting')
-        fs.watch(path.join(cwd, root), {
-            recursive: true
-          }, () =>
-          sendMessage(res, 'message', 'reloading page')
-        )
-      })
-      .listen(parseInt(reloadPort, 10))
+  const livereload = reload ? `
+  <script>
+  const source = new EventSource('/livereload');
+  const reload = () => location.reload(true);
+  source.onmessage = reload;
+  source.onerror = () => (source.onopen = reload);
+  console.log('[servor] listening for file changes');
+  </script>
+  ` : '';
+
+  const serveReload = (res) => {
+    res.writeHead(200, {
+      connection: 'keep-alive',
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+    });
+    sendMessage(res, 'connected', 'ready');
+    setInterval(sendMessage, 60000, res, 'ping', 'waiting');
+    reloadClients.push(res);
+  };
+
+
+  const serveStaticFile = (res, pathname) => {
+    const uri = path.join(root, pathname);
+    let ext = uri.replace(/^.*[\.\/\\]/, '').toLowerCase();
+    if (!fs.existsSync(uri)) return sendError(res, 404);
+    fs.readFile(uri, 'binary', (err, file) =>
+      err ? sendError(res, 500) : sendFile(res, 200, file, ext)
+    );
+  };
+
+  const serveRoute = (res, pathname) => {
+    const index = static ?
+      path.join(root, pathname, fallback) :
+      path.join(root, fallback);
+    //if (!fs.existsSync(index) || (pathname.endsWith('/') && pathname !== '/'))
+    //  return serveDirectoryListing(res, pathname);
+    fs.readFile(index, 'binary', (err, file) => {
+      if (err) return sendError(res, 500);
+      const status = pathname === '/' || static ? 200 : 301;
+      if (module) file = `<script type='module'>${file}</script>`;
+      if (static) file = baseDoc(pathname) + file;
+      file = file + inject + livereload;
+      sendFile(res, status, file, 'html');
+    });
+  };
+
+  (async function () {
+    var status = await use_port(port);
+    if (status == "") {
+      server((req, res) => {
+        const pathname = decodeURI(url.parse(req.url).pathname);
+        res.setHeader('access-control-allow-origin', '*');
+        if (reload && pathname === '/livereload') return serveReload(res);
+        if (!isRouteRequest(pathname)) return serveStaticFile(res, pathname);
+        return serveRoute(res, pathname);
+      }).listen(parseInt(port, 10), () => {
+        open_browser(port);
+        log(`Open ${clor.blue.bold(protocol+"://localhost:"+port)}`);
+      });
+
+      reload &&
+        fileWatch(root, () => {
+          while (reloadClients.length > 0)
+            sendMessage(reloadClients.pop(), 'message', 'reload');
+        });
+
+      process.on('SIGINT', () => {
+        while (reloadClients.length > 0) reloadClients.pop().end();
+        process.exit();
+      });
     } else {
       log(`Error ${clor.red.bold(status)}`);
     }

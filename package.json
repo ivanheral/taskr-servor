@@ -1,6 +1,6 @@
 {
   "name": "taskr-servor",
-  "version": "1.0.3",  
+  "version": "1.0.4",  
   "description": "Servor for taskr",
   "repository": {
     "type": "git",
@@ -14,6 +14,6 @@
     "servor"
   ],
   "author": "ivanheral <ivanhernandezal@gmail.com>",
-  "files": ["index.js","utils.js","types.json","port.js"],
+  "files": ["index.js","utils.js"],
   "license": "MIT"
 }
